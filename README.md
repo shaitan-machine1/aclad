@@ -24,10 +24,22 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
-The pure service tests use fake ACL/store backends and require no root. Live
-udev, PAM, POSIX ACL, and sessiond integration can be exercised on a private
-D-Bus daemon; physical VT/audio/hotplug acceptance remains an M5 Artix VM
-check.
+The pure service tests use fake ACL/store backends and require no root; one
+filesystem test exercises real libacl. Root-required end-to-end harnesses are
+also committed:
+
+```sh
+./tests/root-e2e.sh
+./tests/root-sessiond-e2e.sh
+```
+
+The first uses a private D-Bus daemon and a no-device test service to verify
+root authorization, persistence, `pam_aclad` grant/revoke, and the no-seat path
+without touching host device ACLs. The second builds sibling scoped/sessiond
+checkouts (override with `SCOPED_REPO` and `SESSIOND_REPO`) and verifies restart
+reconciliation plus unclean-exit `SessionRemoved` revocation. Both require
+passwordless `sudo` and return status 77 when prerequisites are unavailable.
+Physical VT/audio/USB-hotplug acceptance remains an M5 Artix VM check.
 
 ## Installation
 

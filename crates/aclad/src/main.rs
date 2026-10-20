@@ -41,17 +41,38 @@ async fn main() -> anyhow::Result<()> {
         Bus::System => Builder::system(),
         Bus::Session => Builder::session(),
     };
+    // The builder always sets DO_NOT_QUEUE; turning the other two flags
+    // off means a second instance fails to start instead of silently
+    // stealing the name from the running daemon (which would then keep
+    // running unreachable, with the supervisor none the wiser).
     let connection = builder
         .name(BUS_NAME)
+        .allow_name_replacements(false)
+        .replace_existing_names(false)
         .serve_at(OBJECT_PATH, Manager::new(service.clone()))
         .build()
-        .await?;
+        .await
+        .map_err(|error| match error {
+            zbus::Error::NameTaken => {
+                anyhow::anyhow!("{BUS_NAME} is already owned on this bus; another aclad is running")
+            }
+            other => anyhow::Error::new(other),
+        })?;
 
     let integrated = aclad::sessiond::start(connection.clone(), service.clone()).await?;
     tracing::info!(sessiond_integration = integrated, "aclad ready");
 
-    while let Some(event) = events.recv().await {
-        service.handle_event(event)?;
+    loop {
+        tokio::select! {
+            event = events.recv() => match event {
+                Some(event) => service.handle_event(event)?,
+                None => anyhow::bail!("udev monitor ended"),
+            },
+            // Grants outlive us on disk, so exiting here is safe: the
+            // supervisor restarts us and `Service::load` reloads them.
+            // Staying alive without a name would silently strip every
+            // future session of device access instead.
+            () = connection.closed() => anyhow::bail!("lost the D-Bus connection"),
+        }
     }
-    anyhow::bail!("udev monitor ended")
 }

@@ -54,6 +54,20 @@ impl Manager {
         require_root(caller_uid(connection, &header).await?)?;
         self.service.revoke(&sid).map_err(map_error)
     }
+
+    async fn list_grants(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+    ) -> Result<Vec<(String, u32, String)>, ManagerError> {
+        require_root(caller_uid(connection, &header).await?)?;
+        Ok(self
+            .service
+            .grants()
+            .into_iter()
+            .map(|(sid, grant)| (sid, grant.uid, grant.seat.to_string()))
+            .collect())
+    }
 }
 
 fn map_error(error: anyhow::Error) -> ManagerError {
@@ -89,7 +103,7 @@ fn require_root(uid: Option<u32>) -> Result<(), ManagerError> {
         Ok(())
     } else {
         Err(ManagerError::AccessDenied(
-            "ACL mutation is root-only".into(),
+            "ACL administration is root-only".into(),
         ))
     }
 }

@@ -260,6 +260,22 @@ mod tests {
     }
 
     #[test]
+    fn grant_inventory_is_sorted_by_session_id() {
+        let service = Service::load(
+            Arc::new(MemoryStore::default()),
+            Arc::new(FakeAcl::default()),
+            vec![],
+        )
+        .unwrap();
+        service.grant(B, 1001, SeatName::seat0()).unwrap();
+        service.grant(A, 1000, SeatName::seat0()).unwrap();
+        assert_eq!(
+            service.grants().into_keys().collect::<Vec<_>>(),
+            vec![A.to_owned(), B.to_owned()]
+        );
+    }
+
+    #[test]
     fn hotplug_uses_current_grants_and_session_reconcile_revokes() {
         let acl = Arc::new(FakeAcl::default());
         let service = Service::load(Arc::new(MemoryStore::default()), acl.clone(), vec![]).unwrap();

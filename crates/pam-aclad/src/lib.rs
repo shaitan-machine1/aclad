@@ -269,6 +269,10 @@ impl Operation {
     }
 }
 
+fn timeout_error(description: &str, timeout: Duration) -> String {
+    format!("{description} timed out after {timeout:?}")
+}
+
 fn call(timeout: Duration, operation: Operation) -> Result<(), String> {
     let description = operation.description();
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -296,7 +300,7 @@ fn call(timeout: Duration, operation: Operation) -> Result<(), String> {
             }
         })
         .await
-        .map_err(|_| format!("{timeout_description} timed out after {timeout:?}"))?
+        .map_err(|_| timeout_error(&timeout_description, timeout))?
     })
 }
 
@@ -352,5 +356,16 @@ mod tests {
             logged = message.to_owned();
         });
         assert_eq!(logged, "aclad Grant for session abc: unavailable");
+    }
+
+    #[test]
+    fn timeout_keeps_operation_and_duration_context() {
+        assert_eq!(
+            timeout_error(
+                "aclad Grant for session abc, uid 1000, seat seat0",
+                Duration::from_millis(250)
+            ),
+            "aclad Grant for session abc, uid 1000, seat seat0 timed out after 250ms"
+        );
     }
 }

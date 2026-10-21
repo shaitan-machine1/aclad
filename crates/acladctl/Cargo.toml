@@ -1,0 +1,12 @@
+[package]
+name = "acladctl"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+seat-udev.workspace = true
+tokio.workspace = true
+zbus.workspace = true

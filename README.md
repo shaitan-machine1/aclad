@@ -2,7 +2,10 @@
 
 Phase 1 device-ACL service for the decoupled login stack.
 
-- `aclad` owns root-only `org.decoupling.aclad1.Manager.{Grant,Revoke}`.
+- `aclad` owns root-only `org.decoupling.aclad1.Manager` grant, revoke and
+  deterministically ordered grant-inventory methods.
+- `acladctl` provides readable `list`, `grant` and `revoke` commands over the
+  system bus; daemon peer credentials remain the authorization boundary.
 - `pam_aclad.so` synchronously grants before PAM open returns and revokes on
   PAM close; failures include operation context and are reported through
   `pam_syslog()` with a constant format string.
@@ -16,6 +19,17 @@ Phase 1 device-ACL service for the decoupled login stack.
   `ListSessions`, reconciles persisted grants when sessiond is reachable, and
   retries periodically if sessiond starts later. With no sessiond it remains a
   PAM-only service and retains loaded grants.
+
+Administrative client commands are:
+
+```sh
+acladctl list
+acladctl grant SESSION_ID UID SEAT
+acladctl revoke SESSION_ID
+```
+
+`list` prints an aligned `SESSION`/`UID`/`SEAT` table or `No grants.`.
+Mutations repeat the affected session and grant details and do not prompt.
 
 ## Build and test
 
@@ -47,7 +61,8 @@ VT/audio/USB-hotplug acceptance remains an M5 Artix VM check.
 
 ## Installation
 
-Install `aclad`, `libpam_aclad.so` as the platform PAM module name, the D-Bus
+Install `aclad` and `acladctl` under `/usr/bin`, `libpam_aclad.so` as the
+platform PAM module name, the D-Bus
 policy from `dist/dbus`, the udev rules from `dist/udev`, and the s6 longrun
 from `dist/s6`.
 

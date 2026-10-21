@@ -4,7 +4,8 @@ Phase 1 device-ACL service for the decoupled login stack.
 
 - `aclad` owns root-only `org.decoupling.aclad1.Manager.{Grant,Revoke}`.
 - `pam_aclad.so` synchronously grants before PAM open returns and revokes on
-  PAM close.
+  PAM close; failures include operation context and are reported through
+  `pam_syslog()` with a constant format string.
 - Grants persist as root-only JSON records under `/run/aclad/grants`.
 - ACLs on each seat's `uaccess` devices are recomputed as the exact union of
   granted UIDs. Named-user entries are replaced, the base ACL and named groups
@@ -31,6 +32,7 @@ also committed:
 ```sh
 ./tests/root-e2e.sh
 ./tests/root-sessiond-e2e.sh
+./tests/pam-syslog.sh
 ```
 
 The first uses a private D-Bus daemon and a no-device test service to verify
@@ -39,7 +41,9 @@ without touching host device ACLs. The second builds sibling scoped/sessiond
 checkouts (override with `SCOPED_REPO` and `SESSIOND_REPO`) and verifies restart
 reconciliation plus unclean-exit `SessionRemoved` revocation. Both require
 passwordless `sudo` and return status 77 when prerequisites are unavailable.
-Physical VT/audio/USB-hotplug acceptance remains an M5 Artix VM check.
+`pam-syslog.sh` interposes a test logger and verifies contextual system-bus,
+grant, session, uid and seat details with the literal `%s` format. Physical
+VT/audio/USB-hotplug acceptance remains an M5 Artix VM check.
 
 ## Installation
 

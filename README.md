@@ -44,6 +44,16 @@ Physical VT/audio/USB-hotplug acceptance remains an M5 Artix VM check.
 ## Installation
 
 Install `aclad`, `libpam_aclad.so` as the platform PAM module name, the D-Bus
-policy from `dist/dbus`, and the s6 longrun from `dist/s6`. aclad requires the
+policy from `dist/dbus`, the udev rules from `dist/udev`, and the s6 longrun
+from `dist/s6`.
+
+`dist/udev/70-uaccess.rules` replaces the file systemd and elogind ship. It
+only tags devices: the `uaccess` builtin it would otherwise invoke asks
+logind which session is active, so aclad applies the ACLs instead. Nothing is
+tagged without it, which leaves aclad with no devices to manage, and it must
+sort before `71-seat.rules` from `seat-udev`, which makes every `uaccess`
+device a seat member. Existing devices pick the rules up on
+`udevadm control --reload` plus `udevadm trigger`, or at the next boot.
+ aclad requires the
 system D-Bus and completed udev coldplug. Link the daemon with libacl and
 libudev. See `dist/pam/README.md` for stack ordering.

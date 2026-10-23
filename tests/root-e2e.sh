@@ -88,7 +88,7 @@ if busctl --address="$address" call org.decoupling.aclad1 \
     echo "unprivileged grant inventory unexpectedly succeeded" >&2
     exit 1
 fi
-grep -q 'AccessDenied' "$work/nonroot-list.log"
+grep -q 'root-only' "$work/nonroot-list.log"
 [ "$(sudo busctl --address="$address" call org.decoupling.aclad1 \
     /org/decoupling/aclad1 org.decoupling.aclad1.Manager ListGrants)" = "a(sus) 0" ]
 if busctl --address="$address" call org.decoupling.aclad1 \
@@ -97,7 +97,7 @@ if busctl --address="$address" call org.decoupling.aclad1 \
     echo "unprivileged grant unexpectedly succeeded" >&2
     exit 1
 fi
-grep -q 'AccessDenied' "$work/nonroot-grant.log"
+grep -q 'root-only' "$work/nonroot-grant.log"
 sudo test ! -e "$work/grants/$sid_c"
 sudo busctl --address="$address" call org.decoupling.aclad1 \
     /org/decoupling/aclad1 org.decoupling.aclad1.Manager \
@@ -116,7 +116,7 @@ if busctl --address="$address" call org.decoupling.aclad1 \
     echo "unprivileged revoke unexpectedly succeeded" >&2
     exit 1
 fi
-grep -q 'AccessDenied' "$work/nonroot-revoke.log"
+grep -q 'root-only' "$work/nonroot-revoke.log"
 sudo busctl --address="$address" call org.decoupling.aclad1 \
     /org/decoupling/aclad1 org.decoupling.aclad1.Manager \
     Revoke s "$sid_a" >/dev/null

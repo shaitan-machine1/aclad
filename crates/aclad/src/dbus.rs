@@ -1,14 +1,11 @@
 use crate::service::Service;
+pub use aclad_api::{BUS_NAME, GrantDescription, INTERFACE_NAME, OBJECT_PATH};
 use seat_udev::SeatName;
 use std::sync::Arc;
 use zbus::Connection;
 use zbus::fdo;
 use zbus::message::Header;
 use zbus::names::BusName;
-
-pub const BUS_NAME: &str = "org.decoupling.aclad1";
-pub const OBJECT_PATH: &str = "/org/decoupling/aclad1";
-pub const INTERFACE_NAME: &str = "org.decoupling.aclad1.Manager";
 
 #[derive(Debug, zbus::DBusError)]
 #[zbus(prefix = "org.decoupling.aclad1.Error")]
@@ -59,7 +56,7 @@ impl Manager {
         &self,
         #[zbus(header)] header: Header<'_>,
         #[zbus(connection)] connection: &Connection,
-    ) -> Result<Vec<(String, u32, String)>, ManagerError> {
+    ) -> Result<Vec<GrantDescription>, ManagerError> {
         require_root(caller_uid(connection, &header).await?)?;
         Ok(self
             .service

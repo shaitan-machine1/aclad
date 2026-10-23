@@ -6,6 +6,7 @@ version = 4
 name = "aclad"
 version = "0.1.0"
 dependencies = [
+ "aclad-api",
  "anyhow",
  "clap",
  "futures-util",
@@ -21,13 +22,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "acladctl"
+name = "aclad-api"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "clap",
- "seat-udev",
- "tokio",
  "zbus",
 ]
 

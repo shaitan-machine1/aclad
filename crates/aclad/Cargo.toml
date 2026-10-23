@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+aclad-api.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 futures-util.workspace = true

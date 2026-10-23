@@ -7,7 +7,6 @@ for command in cargo cc dbus-daemon busctl pgrep sudo; do
 done
 sudo -n true || { echo "passwordless sudo is required" >&2; exit 77; }
 cargo build --manifest-path "$repo/Cargo.toml" -p aclad --example fake-aclad
-cargo build --manifest-path "$repo/Cargo.toml" -p acladctl
 cargo build --manifest-path "$repo/Cargo.toml" -p pam-aclad
 
 work=$(mktemp -d /tmp/aclad-root-e2e.XXXXXX)
@@ -83,45 +82,51 @@ wait_name org.decoupling.aclad1
 sid_a=0123456789abcdef0123456789abcdef
 sid_b=1123456789abcdef0123456789abcdef
 sid_c=2123456789abcdef0123456789abcdef
-if env DBUS_SYSTEM_BUS_ADDRESS="$address" "$repo/target/debug/acladctl" list >"$work/nonroot-list.log" 2>&1; then
+if busctl --address="$address" call org.decoupling.aclad1 \
+    /org/decoupling/aclad1 org.decoupling.aclad1.Manager \
+    ListGrants >"$work/nonroot-list.log" 2>&1; then
     echo "unprivileged grant inventory unexpectedly succeeded" >&2
     exit 1
 fi
-grep -q 'ListGrants' "$work/nonroot-list.log"
 grep -q 'AccessDenied' "$work/nonroot-list.log"
-[ "$(sudo -E env DBUS_SYSTEM_BUS_ADDRESS="$address" "$repo/target/debug/acladctl" list)" = "No grants." ]
-if env DBUS_SYSTEM_BUS_ADDRESS="$address" "$repo/target/debug/acladctl" grant "$sid_c" 1000 seat0 >"$work/nonroot-grant.log" 2>&1; then
+[ "$(sudo busctl --address="$address" call org.decoupling.aclad1 \
+    /org/decoupling/aclad1 org.decoupling.aclad1.Manager ListGrants)" = "a(sus) 0" ]
+if busctl --address="$address" call org.decoupling.aclad1 \
+    /org/decoupling/aclad1 org.decoupling.aclad1.Manager \
+    Grant sus "$sid_c" 1000 seat0 >"$work/nonroot-grant.log" 2>&1; then
     echo "unprivileged grant unexpectedly succeeded" >&2
     exit 1
 fi
-grep -q 'Grant' "$work/nonroot-grant.log"
 grep -q 'AccessDenied' "$work/nonroot-grant.log"
 sudo test ! -e "$work/grants/$sid_c"
-grant_b=$(sudo -E env DBUS_SYSTEM_BUS_ADDRESS="$address" "$repo/target/debug/acladctl" grant "$sid_b" 7 seat1)
-[ "$grant_b" = "Granted session $sid_b to uid 7 on seat seat1." ]
-grant_a=$(sudo -E env DBUS_SYSTEM_BUS_ADDRESS="$address" "$repo/target/debug/acladctl" grant "$sid_a" 1000 seat0)
-[ "$grant_a" = "Granted session $sid_a to uid 1000 on seat seat0." ]
+sudo busctl --address="$address" call org.decoupling.aclad1 \
+    /org/decoupling/aclad1 org.decoupling.aclad1.Manager \
+    Grant sus "$sid_b" 7 seat1 >/dev/null
+sudo busctl --address="$address" call org.decoupling.aclad1 \
+    /org/decoupling/aclad1 org.decoupling.aclad1.Manager \
+    Grant sus "$sid_a" 1000 seat0 >/dev/null
 sudo test -f "$work/grants/$sid_a"
 sudo test -f "$work/grants/$sid_b"
-list_output=$(sudo -E env DBUS_SYSTEM_BUS_ADDRESS="$address" "$repo/target/debug/acladctl" list)
-echo "$list_output" | grep -q '^SESSION[[:space:]][[:space:]]*UID[[:space:]][[:space:]]*SEAT$'
-[ "$(echo "$list_output" | sed -n '2p' | awk '{print $1}')" = "$sid_a" ]
-[ "$(echo "$list_output" | sed -n '3p' | awk '{print $1}')" = "$sid_b" ]
-echo "$list_output" | grep -q "^$sid_a[[:space:]][[:space:]]*1000[[:space:]][[:space:]]*seat0$"
-echo "$list_output" | grep -q "^$sid_b[[:space:]][[:space:]]*7[[:space:]][[:space:]]*seat1$"
-if env DBUS_SYSTEM_BUS_ADDRESS="$address" "$repo/target/debug/acladctl" revoke "$sid_a" >"$work/nonroot-revoke.log" 2>&1; then
+list_output=$(sudo busctl --address="$address" call org.decoupling.aclad1 \
+    /org/decoupling/aclad1 org.decoupling.aclad1.Manager ListGrants)
+echo "$list_output" | grep -q "^a(sus) 2 \"$sid_a\" 1000 \"seat0\" \"$sid_b\" 7 \"seat1\"$"
+if busctl --address="$address" call org.decoupling.aclad1 \
+    /org/decoupling/aclad1 org.decoupling.aclad1.Manager \
+    Revoke s "$sid_a" >"$work/nonroot-revoke.log" 2>&1; then
     echo "unprivileged revoke unexpectedly succeeded" >&2
     exit 1
 fi
-grep -q 'Revoke' "$work/nonroot-revoke.log"
 grep -q 'AccessDenied' "$work/nonroot-revoke.log"
-revoke_a=$(sudo -E env DBUS_SYSTEM_BUS_ADDRESS="$address" "$repo/target/debug/acladctl" revoke "$sid_a")
-[ "$revoke_a" = "Revoked session $sid_a." ]
-revoke_b=$(sudo -E env DBUS_SYSTEM_BUS_ADDRESS="$address" "$repo/target/debug/acladctl" revoke "$sid_b")
-[ "$revoke_b" = "Revoked session $sid_b." ]
+sudo busctl --address="$address" call org.decoupling.aclad1 \
+    /org/decoupling/aclad1 org.decoupling.aclad1.Manager \
+    Revoke s "$sid_a" >/dev/null
+sudo busctl --address="$address" call org.decoupling.aclad1 \
+    /org/decoupling/aclad1 org.decoupling.aclad1.Manager \
+    Revoke s "$sid_b" >/dev/null
 sudo test ! -e "$work/grants/$sid_a"
 sudo test ! -e "$work/grants/$sid_b"
-[ "$(sudo -E env DBUS_SYSTEM_BUS_ADDRESS="$address" "$repo/target/debug/acladctl" list)" = "No grants." ]
+[ "$(sudo busctl --address="$address" call org.decoupling.aclad1 \
+    /org/decoupling/aclad1 org.decoupling.aclad1.Manager ListGrants)" = "a(sus) 0" ]
 
 sudo -E env DBUS_SYSTEM_BUS_ADDRESS="$address" "$work/pam-app" aclad-e2e "$work/seat-open" XDG_SEAT=seat0 "$work/pam.d" >"$work/pam.log" 2>&1 & pam_wrapper=$!
 wait_file "$work/seat-open"
@@ -135,4 +140,4 @@ sudo test ! -e "$work/grants/0123456789abcdef0123456789abcdef"
 DBUS_SYSTEM_BUS_ADDRESS="unix:path=$work/does-not-exist" "$work/pam-app" aclad-e2e "$work/no-seat-open" - "$work/pam.d"
 test -f "$work/no-seat-open"
 
-echo "aclad root/private-D-Bus/PAM/acladctl end-to-end tests passed"
+echo "aclad root/private-D-Bus/PAM end-to-end tests passed"

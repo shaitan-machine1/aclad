@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         .at(OBJECT_PATH, Manager::new(service.clone()))
         .await?;
     connection.request_name(BUS_NAME).await?;
-    let _ = aclad::sessiond::start(connection, service).await?;
+    let _ = aclad::sessiond::start(aclad::sessiond::Bus::System, service)?;
     std::future::pending::<()>().await;
     Ok(())
 }

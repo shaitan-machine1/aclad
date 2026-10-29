@@ -4,11 +4,12 @@ Phase 1 device-ACL service for the decoupled login stack.
 
 - `aclad` owns root-only `org.decoupling.aclad1.Manager` grant, revoke and
   deterministically ordered grant-inventory methods.
-- `aclad-api` provides typed zbus proxies and protocol constants for the
-  separate unified `loginctl` client; daemon peer credentials remain the
-  authorization boundary.
-- `pam_aclad.so` synchronously grants before PAM open returns and revokes on
-  PAM close; failures include operation context and are reported through
+- `aclad-api` provides a genuinely blocking `dbus` client and protocol types
+  for the separate unified `loginctl` client; daemon peer credentials remain
+  the authorization boundary.
+- `pam_aclad.so` uses that blocking client directly—without an embedded async
+  runtime—to grant before PAM open returns and revoke on PAM close. Failures
+  include operation context and are reported through
   `pam_syslog()` with a constant format string.
 - Grants persist as root-only JSON records under `/run/aclad/grants`.
 - ACLs on each seat's `uaccess` devices are recomputed as the exact union of
@@ -16,7 +17,8 @@ Phase 1 device-ACL service for the decoupled login stack.
   are preserved, and libacl recomputes the POSIX mask.
 - A monitor-first `seat-udev` cache handles hotplug and seat moves. Static
   seat0 nodes are discovered through `/run/udev/static_node-tags/uaccess`.
-- `SessionRemoved` is an equal revocation source. aclad subscribes before
+- `SessionRemoved` is an equal revocation source. aclad installs a
+  type/interface/path/member match with no sender constraint before
   `ListSessions`, reconciles persisted grants when sessiond is reachable, and
   retries periodically if sessiond starts later. With no sessiond it remains a
   PAM-only service and retains loaded grants.
@@ -45,8 +47,8 @@ also committed:
 
 The first uses a private D-Bus daemon and a no-device test service to verify
 root authorization, persistence, `pam_aclad` grant/revoke, and the no-seat path
-without touching host device ACLs. The second builds sibling scoped/sessiond
-checkouts (override with `SCOPED_REPO` and `SESSIOND_REPO`) and verifies restart
+without touching host device ACLs. The second builds the sibling sessiond
+checkout (override with `SESSIOND_REPO`) and verifies restart
 reconciliation plus unclean-exit `SessionRemoved` revocation. Both require
 passwordless `sudo` and return status 77 when prerequisites are unavailable.
 `pam-syslog.sh` interposes a test logger and verifies contextual system-bus,

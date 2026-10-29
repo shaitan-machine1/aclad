@@ -1,3 +1,4 @@
+use aclad_api::Client;
 use libc::{LOG_ERR, c_char, c_int, c_void};
 use pam_ffi::{PAM_OPEN_ERR, PAM_SESSION_ERR, PAM_SUCCESS, PAM_TTY, PAM_USER_UNKNOWN, PamHandle};
 use seat_udev::SeatName;
@@ -5,16 +6,6 @@ use std::ffi::{CStr, CString};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::time::Duration;
-
-#[zbus::proxy(
-    interface = "org.decoupling.aclad1.Manager",
-    default_service = "org.decoupling.aclad1",
-    default_path = "/org/decoupling/aclad1"
-)]
-trait Aclad {
-    fn grant(&self, sid: &str, uid: u32, seat: &str) -> zbus::Result<()>;
-    fn revoke(&self, sid: &str) -> zbus::Result<()>;
-}
 
 struct ModuleData {
     sid: CString,
@@ -275,32 +266,18 @@ fn timeout_error(description: &str, timeout: Duration) -> String {
 
 fn call(timeout: Duration, operation: Operation) -> Result<(), String> {
     let description = operation.description();
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| format!("create PAM async runtime for {description}: {error}"))?;
-    runtime.block_on(async move {
-        let timeout_description = description.clone();
-        tokio::time::timeout(timeout, async move {
-            let connection = zbus::Connection::system()
-                .await
-                .map_err(|error| format!("connect to the system bus for {description}: {error}"))?;
-            let proxy = AcladProxy::new(&connection)
-                .await
-                .map_err(|error| format!("create aclad proxy for {description}: {error}"))?;
-            match operation {
-                Operation::Grant { sid, uid, seat } => proxy
-                    .grant(&sid, uid, &seat)
-                    .await
-                    .map_err(|error| format!("aclad Grant for session {sid}: {error}")),
-                Operation::Revoke { sid } => proxy
-                    .revoke(&sid)
-                    .await
-                    .map_err(|error| format!("aclad Revoke for session {sid}: {error}")),
-            }
-        })
-        .await
-        .map_err(|_| timeout_error(&timeout_description, timeout))?
+    let client = Client::system(timeout)
+        .map_err(|error| format!("connect to the system bus for {description}: {error}"))?;
+    let result = match operation {
+        Operation::Grant { sid, uid, seat } => client.grant(&sid, uid, &seat),
+        Operation::Revoke { sid } => client.revoke(&sid),
+    };
+    result.map_err(|error| {
+        if error.name() == Some("org.freedesktop.DBus.Error.NoReply") {
+            timeout_error(&description, timeout)
+        } else {
+            format!("{description}: {error}")
+        }
     })
 }
 

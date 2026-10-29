@@ -65,7 +65,11 @@ async fn main() -> anyhow::Result<()> {
             other => anyhow::Error::new(other),
         })?;
 
-    let integrated = aclad::sessiond::start(connection.clone(), service.clone()).await?;
+    let integration_bus = match args.bus {
+        Bus::System => aclad::sessiond::Bus::System,
+        Bus::Session => aclad::sessiond::Bus::Session,
+    };
+    let integrated = aclad::sessiond::start(integration_bus, service.clone())?;
     tracing::info!(sessiond_integration = integrated, "aclad ready");
 
     loop {

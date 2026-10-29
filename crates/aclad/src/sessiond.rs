@@ -1,45 +1,54 @@
 use crate::service::Service;
-use futures_util::StreamExt;
+use dbus::blocking::Connection;
+use dbus::message::MatchRule;
 use std::collections::BTreeSet;
-use std::sync::Arc;
-use std::time::Duration;
-use zbus::Connection;
+use std::sync::{Arc, mpsc};
+use std::time::{Duration, Instant};
 
-#[zbus::proxy(
-    interface = "org.decoupling.sessiond1.Manager",
-    default_service = "org.decoupling.sessiond1",
-    default_path = "/org/decoupling/sessiond1"
-)]
-trait Sessiond {
-    fn list_sessions(&self) -> zbus::Result<Vec<(String, u32)>>;
-    #[zbus(signal)]
-    fn session_removed(&self, sid: &str, uid: u32) -> zbus::Result<()>;
+const BUS_NAME: &str = "org.decoupling.sessiond1";
+const OBJECT_PATH: &str = "/org/decoupling/sessiond1";
+const INTERFACE: &str = "org.decoupling.sessiond1.Manager";
+#[derive(Clone, Copy)]
+pub enum Bus {
+    System,
+    Session,
 }
 
-/// Subscribe before listing so removal cannot be lost in the startup window.
-/// Returns false when sessiond is initially absent; persisted PAM-only grants
-/// are retained and periodic reconciliation attaches if sessiond appears later.
-pub async fn start(connection: Connection, service: Arc<Service>) -> anyhow::Result<bool> {
-    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
-    tokio::spawn(async move {
-        let result = monitor(connection, service, ready_tx).await;
-        if let Err(error) = result {
-            tracing::error!(%error, "sessiond integration ended");
-        }
-    });
+/// Subscribe before querying so a removal cannot be lost in the startup
+/// window. The signal rule intentionally has no sender constraint: lifecycle
+/// signals can originate from root PAM connections as well as the daemon.
+pub fn start(bus: Bus, service: Arc<Service>) -> anyhow::Result<bool> {
+    let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+    std::thread::Builder::new()
+        .name("aclad-sessiond".into())
+        .spawn(move || {
+            if let Err(error) = monitor(bus, service, ready_tx) {
+                tracing::error!(%error, "sessiond integration ended");
+            }
+        })?;
     ready_rx
-        .await
+        .recv()
         .map_err(|_| anyhow::anyhow!("sessiond monitor failed to initialize"))?
 }
-
-async fn monitor(
-    connection: Connection,
+fn monitor(
+    bus: Bus,
     service: Arc<Service>,
-    ready: tokio::sync::oneshot::Sender<anyhow::Result<bool>>,
+    ready: mpsc::SyncSender<anyhow::Result<bool>>,
 ) -> anyhow::Result<()> {
-    let proxy = SessiondProxy::new(&connection).await?;
-    let mut removed = proxy.receive_session_removed().await?;
-    let initial = reconcile(&proxy, &service).await;
+    let connection = match bus {
+        Bus::System => Connection::new_system()?,
+        Bus::Session => Connection::new_session()?,
+    };
+    let mut rule = MatchRule::new_signal(INTERFACE, "SessionRemoved");
+    rule.path = Some(OBJECT_PATH.into());
+    let signal_service = service.clone();
+    connection.add_match::<(String, u32), _>(rule, move |(sid, _), _, _| {
+        if let Err(error) = signal_service.revoke(&sid) {
+            tracing::error!(%sid, %error, "SessionRemoved revoke failed");
+        }
+        true
+    })?;
+    let initial = reconcile(&connection, &service);
     match initial {
         Ok(()) => {
             let _ = ready.send(Ok(true));
@@ -49,33 +58,20 @@ async fn monitor(
             let _ = ready.send(Ok(false));
         }
     }
-
-    let mut retry = tokio::time::interval(Duration::from_secs(5));
-    retry.tick().await;
+    let mut next_reconcile = Instant::now() + Duration::from_secs(5);
     loop {
-        tokio::select! {
-            signal = removed.next() => {
-                let Some(signal) = signal else { anyhow::bail!("SessionRemoved stream ended"); };
-                match signal.args() {
-                    Ok(args) => {
-                        if let Err(error) = service.revoke(args.sid()) {
-                            tracing::error!(sid = args.sid(), %error, "SessionRemoved revoke failed");
-                        }
-                    }
-                    Err(error) => tracing::warn!(%error, "invalid SessionRemoved signal"),
-                }
+        connection.process(Duration::from_secs(1))?;
+        if Instant::now() >= next_reconcile {
+            if let Err(error) = reconcile(&connection, &service) {
+                tracing::debug!(%error, "periodic sessiond reconciliation unavailable");
             }
-            _ = retry.tick() => {
-                if let Err(error) = reconcile(&proxy, &service).await {
-                    tracing::debug!(%error, "periodic sessiond reconciliation unavailable");
-                }
-            }
+            next_reconcile = Instant::now() + Duration::from_secs(5);
         }
     }
 }
-
-async fn reconcile(proxy: &SessiondProxy<'_>, service: &Service) -> anyhow::Result<()> {
-    let sessions = proxy.list_sessions().await?;
+fn reconcile(connection: &Connection, service: &Service) -> anyhow::Result<()> {
+    let proxy = connection.with_proxy(BUS_NAME, OBJECT_PATH, Duration::from_secs(5));
+    let (sessions,): (Vec<(String, u32)>,) = proxy.method_call(INTERFACE, "ListSessions", ())?;
     let live = sessions
         .into_iter()
         .map(|(sid, _)| sid)

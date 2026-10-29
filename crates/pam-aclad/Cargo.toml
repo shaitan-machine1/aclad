@@ -8,8 +8,7 @@ license.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+aclad-api.workspace = true
 libc.workspace = true
 pam-ffi = { path = "../pam-ffi" }
 seat-udev.workspace = true
-tokio.workspace = true
-zbus.workspace = true

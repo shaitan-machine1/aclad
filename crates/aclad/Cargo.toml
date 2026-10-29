@@ -8,6 +8,7 @@ license.workspace = true
 aclad-api.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+dbus.workspace = true
 futures-util.workspace = true
 libc.workspace = true
 seat-udev.workspace = true
